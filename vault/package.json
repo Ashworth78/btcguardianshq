@@ -5,5 +5,8 @@
     "crypto-js": "^4.2.0",
     "secrets.js-grempe": "^2.0.0",
     "sqlite3": "^6.0.1"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/cli.test.cjs"
   }
 }
