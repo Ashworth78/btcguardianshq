@@ -213,6 +213,53 @@ test('offline vault CLI regression suite', { concurrency: false }, async t => {
     assert.notEqual(otherVault[0].salt, created[0].salt);
   });
 
+  // Breaks caught: --words 12 ignored, wrong entropy size, 12-word round trip.
+  for (const words of [12, 24]) {
+    await t.test(`create --words ${words} round-trips a ${words}-word mnemonic`, async t => {
+      const dir = scratch(t);
+      const result = cli(['create', '--words', String(words), '--out', dir, '--show'], { cwd: dir });
+      ok(result);
+      const mnemonic = shownMnemonic(result);
+      assert.equal(mnemonic.split(' ').length, words);
+      assert.ok(bip39.validateMnemonic(mnemonic));
+      assert.equal(Buffer.from(bip39.mnemonicToEntropy(mnemonic), 'hex').length, words === 12 ? 16 : 32);
+      const values = readV2(dir);
+      for (const value of values) assert.deepEqual(value.kdf, KDF);
+      const plain = await decryptOutsideCLI(values);
+      assert.equal(secrets.hex2str(secrets.combine(plain.slice(0, 3))), mnemonic);
+      const back = cli(['reconstruct', '--show', ...[0, 2, 4].map(i => path.join(dir, NAMES[i]))], { cwd: dir });
+      ok(back);
+      assert.equal(shownMnemonic(back), mnemonic);
+      assert.match(back.stdout, new RegExp(`Recovered a valid ${words}-word`));
+    });
+  }
+  await t.test('known 12-word fixture (zero entropy) recovers via reconstruct', async t => {
+    const m12 = bip39.entropyToMnemonic(Buffer.alloc(16));
+    const shares = secrets.share(secrets.str2hex(m12), 5, 3);
+    const salt = Buffer.from('ffeeddccbbaa99887766554433221100', 'hex');
+    const key = await keyFor(salt);
+    const values = shares.map((share, i) => {
+      const iv = Buffer.alloc(12); iv.writeUInt32BE(i + 1, 8);
+      const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+      c.setAAD(Buffer.from(`{"v":2,"index":${i + 1},"threshold":3,"total":5}`));
+      const data = Buffer.concat([c.update(share, 'utf8'), c.final()]);
+      return { v: 2, index: i + 1, threshold: 3, total: 5, kdf: { ...KDF }, salt: salt.toString('base64'),
+        iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: data.toString('base64') };
+    });
+    key.fill(0);
+    const dir = scratch(t);
+    const files = copyV2(dir, values);
+    const result = cli(['reconstruct', '--show', files[1], files[3], files[4]], { cwd: dir });
+    ok(result);
+    assert.equal(shownMnemonic(result), m12);
+    assert.match(result.stdout, /Recovered a valid 12-word/);
+  });
+  await t.test('help documents --words', t => {
+    const dir = scratch(t);
+    const result = cli(['--help'], { cwd: dir, password: null });
+    ok(result); assert.match(result.stdout, /--words 12\|24/);
+  });
+
   // Finite exhaustive enumeration, not a property-based proof or crypto audit.
   for (let a = 0; a < 3; a++) for (let b = a + 1; b < 4; b++) for (let c = b + 1; c < 5; c++) {
     const subset = [a, b, c];
@@ -368,6 +415,11 @@ test('offline vault CLI regression suite', { concurrency: false }, async t => {
     ['legacy create', dir => ['create', '--legacy', '--out', dir], PASSWORD, /only works with reconstruct/],
     ['no terminal', dir => ['create', '--out', dir], null, /No terminal available/],
     ['missing out value', () => ['create', '--out'], PASSWORD, /needs a folder/],
+    ['missing words value', dir => ['create', '--out', dir, '--words'], PASSWORD, /--words needs 12 or 24/],
+    ['words 18', dir => ['create', '--words', '18', '--out', dir], PASSWORD, /--words must be 12 or 24/],
+    ['words non-numeric', dir => ['create', '--words', 'twelve', '--out', dir], PASSWORD, /--words must be 12 or 24/],
+    ['words 012', dir => ['create', '--words', '012', '--out', dir], PASSWORD, /--words must be 12 or 24/],
+    ['words with reconstruct', dir => ['reconstruct', '--words', '12', path.join(dir, 'share-1.json')], PASSWORD, /--words only works with create/],
   ];
   for (const [name, args, password, message] of invalidCreate) {
     await t.test(`create rejects ${name} without writing files`, t => {

@@ -6,7 +6,7 @@
  * independent review. Run only on an offline (air-gapped) machine.
  *
  * What it does:
- *   create       Generates a 24-word BIP39 mnemonic, splits it 3-of-5 with
+ *   create       Generates a 24-word (default) or 12-word BIP39 mnemonic, splits it 3-of-5 with
  *                Shamir (secrets.js-grempe), encrypts each share with
  *                AES-256-GCM using a key from Argon2id (random salt per vault),
  *                and writes share-1.json .. share-5.json.
@@ -40,6 +40,9 @@ const MIN_PASS_LEN = 12;
 const KDF_DEFAULT = { name: 'argon2id', m: 65536, t: 3, p: 1, len: 32 };
 const LEGACY_SALT = 'btcguardianshq-salt-v1';
 const TEST_ENV = 'VAULT_TEST_PASSPHRASE';
+// BIP39 word count -> entropy bits (24 words = 256 bits, 12 words = 128 bits).
+const WORDS_TO_BITS = { 12: 128, 24: 256 };
+const WORDS_DEFAULT = 24;
 
 const MINISCRIPT_EXAMPLE =
   'or(pk(owner),and(older(52560),multi(3,heir1,heir2,heir3,heir4,heir5)))';
@@ -53,7 +56,7 @@ function help() {
   console.log(`BTCGuardiansHQ vault (UNAUDITED PROTOTYPE - use air-gapped only)
 
 Usage:
-  node vault.js create [--out DIR] [--show]
+  node vault.js create [--out DIR] [--words 12|24] [--show]
   node vault.js reconstruct [--show] FILE FILE FILE [...]
   node vault.js reconstruct --legacy [--show] FILE_OR_STRING ...
   node vault.js --help
@@ -61,6 +64,8 @@ Usage:
 Options:
   --out DIR   Folder for share-1.json..share-5.json (default: current folder).
               Refuses to overwrite existing share files.
+  --words N   Mnemonic length for create: 24 (default, 256-bit) or 12 (128-bit,
+              e.g. for Liana hot-key import). reconstruct detects it automatically.
   --show      Print the mnemonic on screen. Without it, the mnemonic is not shown.
   --legacy    Read old v1 shares ("iv:tag:hex", scrypt with fixed salt).
 
@@ -72,7 +77,7 @@ For automated tests only, ${TEST_ENV} can supply it (a warning is printed).
 
 // ---------- argv parsing (no commander) ----------
 function parseArgs(argv) {
-  const opts = { cmd: null, show: false, legacy: false, out: '.', files: [], help: false };
+  const opts = { cmd: null, show: false, legacy: false, out: '.', words: null, files: [], help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -81,6 +86,11 @@ function parseArgs(argv) {
     else if (a === '--out') {
       if (i + 1 >= argv.length) die('--out needs a folder');
       opts.out = argv[++i];
+    } else if (a === '--words') {
+      if (i + 1 >= argv.length) die('--words needs 12 or 24');
+      const w = argv[++i];
+      if (!/^(12|24)$/.test(w)) die('--words must be 12 or 24, got: ' + w);
+      opts.words = Number(w);
     } else if (a.startsWith('--')) die('Unknown option: ' + a + ' (see --help)');
     else if (!opts.cmd) opts.cmd = a;
     else opts.files.push(a);
@@ -190,7 +200,9 @@ async function create(opts) {
   console.error('Reminder: run this only on an air-gapped machine (networking OFF).');
   const passphrase = await getPassphrase(true);
 
-  const mnemonic = bip39.generateMnemonic(256);
+  const words = opts.words || WORDS_DEFAULT;
+  const mnemonic = bip39.generateMnemonic(WORDS_TO_BITS[words]);
+  if (mnemonic.split(' ').length !== words) die('Internal error: unexpected mnemonic length.');
   const hex = secrets.str2hex(mnemonic);
   const shares = secrets.share(hex, SHARES_TOTAL, SHARES_THRESHOLD);
 
@@ -217,7 +229,7 @@ async function create(opts) {
   });
   key.fill(0);
 
-  console.log(`Wrote ${SHARES_TOTAL} encrypted shares (any ${SHARES_THRESHOLD} recover the mnemonic):`);
+  console.log(`Wrote ${SHARES_TOTAL} encrypted shares of a ${words}-word mnemonic (any ${SHARES_THRESHOLD} recover it):`);
   targets.forEach((t) => console.log('  ' + t));
   console.log('\nMiniscript - EXAMPLE TEMPLATE ONLY - placeholder keys, not a spendable policy, not tested:');
   console.log('  ' + MINISCRIPT_EXAMPLE);
@@ -333,6 +345,7 @@ async function main() {
     if (opts.legacy) die('--legacy only works with reconstruct.');
     await create(opts);
   } else if (opts.cmd === 'reconstruct') {
+    if (opts.words !== null) die('--words only works with create (reconstruct detects the length).');
     if (opts.legacy) await reconstructLegacy(opts);
     else await reconstruct(opts);
   } else {
