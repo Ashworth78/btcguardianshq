@@ -81,6 +81,8 @@ function parseArgs(argv) {
     out: '.',
     words: null,
     scheme: '3/5',
+    psbt: null,
+    network: 'signet',
     files: [],
     help: false,
   };
@@ -103,6 +105,12 @@ function parseArgs(argv) {
       let s = argv[++i].toLowerCase().replace('of', '/');
       if (!SCHEMES[s]) die('Unknown scheme: ' + argv[i] + ' (use 2/3, 3/4, 3/5 or 4/5)');
       opts.scheme = s;
+    } else if (a === '--psbt') {
+      if (i + 1 >= argv.length) die('--psbt needs a file');
+      opts.psbt = argv[++i];
+    } else if (a === '--network') {
+      if (i + 1 >= argv.length) die('--network needs signet or testnet');
+      opts.network = argv[++i].toLowerCase();
     } else if (a.startsWith('--')) die('Unknown option: ' + a);
     else if (!opts.cmd) opts.cmd = a;
     else opts.files.push(a);
@@ -473,7 +481,11 @@ async function main() {
     else await reconstruct(opts);
   } else if (opts.cmd === 'test') {
     await runTest(opts);
-  } else {
+  } else if (opts.cmd === 'sign') {
+    if (!opts.psbt) die('sign needs --psbt <file>');
+    const { signReadOnly } = require('./psbt-sign');
+    signReadOnly(opts.psbt, opts.network); 
+ } else {
     die('Unknown command: ' + opts.cmd);
   }
 }
