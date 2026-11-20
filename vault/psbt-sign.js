@@ -14,9 +14,15 @@ function signReadOnly(psbtFile, netName = 'signet') {
     throw new Error('Unknown network: ' + netName + ' (use signet or testnet)');
   }
   const network = bitcoin.networks.testnet; // signet shares tb1 addresses
+  if (!fs.existsSync(psbtFile)) throw new Error('PSBT file not found: ' + psbtFile);
   const text = fs.readFileSync(psbtFile, 'utf8').trim();
   if (!text.startsWith('cHNidP8')) throw new Error('Not a base64 PSBT (should start cHNidP8).');
   const psbt = bitcoin.Psbt.fromBase64(text, { network });
+  const isMainPath = (d) => /^m\/\d+'\/0'/.test(d.path);
+  const all = [...psbt.data.inputs, ...psbt.data.outputs];
+  if (all.some((x) => [...(x.bip32Derivation || []), ...(x.tapBip32Derivation || [])].some(isMainPath))) {
+    throw new Error('Refusing: PSBT has mainnet key paths (coin type 0).');
+  }
   let inTotal = 0n;
   console.log('READ-ONLY: nothing will be signed.');
   console.log('Network:', netName);

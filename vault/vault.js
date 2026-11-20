@@ -54,6 +54,7 @@ Usage:
   node vault.js reconstruct [--show] FILE FILE FILE [...]
   node vault.js reconstruct --legacy [--show] FILE_OR_STRING ...
   node vault.js test     [--scheme 2/3|3/4|3/5|4/5] [--words 12|24]
+  node vault.js sign     --psbt FILE [--network signet|testnet]
   node vault.js --help
 
 Schemes:
@@ -68,6 +69,8 @@ Options:
   --words N   12 or 24 (default 24)
   --show      Print the mnemonic
   --legacy    Read old v1 shares
+  --psbt FILE Show a PSBT's inputs, outputs and fee (read-only)
+  --network N signet or testnet only (default signet)
 
 Passphrase is always prompted (hidden). For tests only, set ${TEST_ENV}.
 `);
@@ -106,10 +109,10 @@ function parseArgs(argv) {
       if (!SCHEMES[s]) die('Unknown scheme: ' + argv[i] + ' (use 2/3, 3/4, 3/5 or 4/5)');
       opts.scheme = s;
     } else if (a === '--psbt') {
-      if (i + 1 >= argv.length) die('--psbt needs a file');
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) die('--psbt needs a file');
       opts.psbt = argv[++i];
     } else if (a === '--network') {
-      if (i + 1 >= argv.length) die('--network needs signet or testnet');
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) die('--network needs signet or testnet');
       opts.network = argv[++i].toLowerCase();
     } else if (a.startsWith('--')) die('Unknown option: ' + a);
     else if (!opts.cmd) opts.cmd = a;
