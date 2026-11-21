@@ -55,6 +55,8 @@ Usage:
   node vault.js reconstruct --legacy [--show] FILE_OR_STRING ...
   node vault.js test     [--scheme 2/3|3/4|3/5|4/5] [--words 12|24]
   node vault.js sign     --psbt FILE [--network signet|testnet]
+  node vault.js sign     --psbt FILE [--network signet|testnet] FILE FILE [...]
+  node vault.js address  FILE FILE [...]
   node vault.js --help
 
 Schemes:
@@ -69,7 +71,7 @@ Options:
   --words N   12 or 24 (default 24)
   --show      Print the mnemonic
   --legacy    Read old v1 shares
-  --psbt FILE Show a PSBT's inputs, outputs and fee (read-only)
+  --psbt FILE PSBT to show (read-only), or to sign if share files are given
   --network N signet or testnet only (default signet)
 
 Passphrase is always prompted (hidden). For tests only, set ${TEST_ENV}.
@@ -340,6 +342,11 @@ async function reconstruct(opts) {
     }
   });
   key.fill(0);
+    if (opts.cmd === 'sign' || opts.cmd === 'address') {
+    const m = secrets.hex2str(secrets.combine(plain));
+    if (!bip39.validateMnemonic(m)) die('Combined result is not a valid BIP39 mnemonic');
+    return m;
+  }
   finish(plain, opts.show);
 }
 
@@ -486,8 +493,20 @@ async function main() {
     await runTest(opts);
   } else if (opts.cmd === 'sign') {
     if (!opts.psbt) die('sign needs --psbt <file>');
-    const { signReadOnly } = require('./psbt-sign');
-    signReadOnly(opts.psbt, opts.network); 
+    const { signReadOnly, signWithMnemonic } = require('./psbt-sign');
+    signReadOnly(opts.psbt, opts.network);
+    if (opts.files.length === 0) return;
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stderr });
+    const ans = await new Promise((r) => rl.question('Sign this? Type yes: ', r));
+    rl.close();
+    if (ans.trim() !== 'yes') die('Not signed.');
+    const mnemonic = await reconstruct(opts);
+    const out = opts.psbt.replace(/\.psbt$/, '') + '.signed.psbt';
+    signWithMnemonic(opts.psbt, opts.network, mnemonic, out);
+  } else if (opts.cmd === 'address') {
+    if (opts.files.length === 0) die('address needs share files');
+    const { showAddress } = require('./psbt-sign');
+    showAddress(await reconstruct(opts));
  } else {
     die('Unknown command: ' + opts.cmd);
   }

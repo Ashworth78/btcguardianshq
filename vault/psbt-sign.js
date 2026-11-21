@@ -58,7 +58,56 @@ function signReadOnly(psbtFile, netName = 'signet') {
   console.log('Total out:', outTotal.toString(), 'sats');
   console.log('Fee:      ', fee.toString(), 'sats');
   if (fee > 50000n) console.log('WARNING: fee is over 50,000 sats. Check carefully.');
-  return { inTotal, outTotal, fee };
+  return { inTotal, outTotal, fee, psbt };
 }
 
-module.exports = { signReadOnly };
+// Find which of our keys owns an input: check the first 20 receive
+// and change addresses on m/84'/1'/0' (signet/testnet BIP84).
+function findKey(root, script, network) {
+  for (const chain of [0, 1]) {
+    for (let n = 0; n < 20; n++) {
+      const child = root.derivePath(`m/84'/1'/0'/${chain}/${n}`);
+      const pay = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(child.publicKey), network });
+      if (Buffer.from(pay.output).equals(Buffer.from(script))) return child;
+    }
+  }
+  return null;
+}
+
+function signWithMnemonic(psbtFile, netName, mnemonic, outFile) {
+  const bip39 = require('bip39');
+  const { BIP32Factory } = require('bip32');
+  const network = bitcoin.networks.testnet;
+  if (fs.existsSync(outFile)) throw new Error('Output file already exists: ' + outFile);
+  const { psbt } = signReadOnly(psbtFile, netName);
+  const root = BIP32Factory(ecc).fromSeed(bip39.mnemonicToSeedSync(mnemonic), network);
+  let signed = 0;
+  psbt.data.inputs.forEach((inp, i) => {
+    const txin = psbt.txInputs[i];
+    const utxo = inp.witnessUtxo ||
+      (inp.nonWitnessUtxo && bitcoin.Transaction.fromBuffer(inp.nonWitnessUtxo).outs[txin.index]);
+    const key = findKey(root, utxo.script, network);
+    if (!key) { console.log(`  #${i} not ours, skipped`); return; }
+    psbt.signInput(i, key);
+    if (!psbt.validateSignaturesOfInput(i, (pub, hash, sig) => ecc.verify(hash, pub, sig))) {
+      throw new Error(`Input ${i}: signature check failed.`);
+    }
+    console.log(`  #${i} signed`);
+    signed++;
+  });
+  if (signed === 0) throw new Error('No inputs belong to these shares. Nothing signed.');
+  fs.writeFileSync(outFile, psbt.toBase64() + '\n');
+  console.log(`Signed ${signed} input(s). Wrote ${outFile}`);
+}
+
+function showAddress(mnemonic) {
+  const bip39 = require('bip39');
+  const { BIP32Factory } = require('bip32');
+  const network = bitcoin.networks.testnet;
+  const root = BIP32Factory(ecc).fromSeed(bip39.mnemonicToSeedSync(mnemonic), network);
+  const child = root.derivePath("m/84'/1'/0'/0/0");
+  const pay = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(child.publicKey), network });
+  console.log("Receive address (m/84'/1'/0'/0/0, signet/testnet):");
+  console.log(pay.address);
+}
+  module.exports = { signReadOnly, signWithMnemonic, showAddress };
