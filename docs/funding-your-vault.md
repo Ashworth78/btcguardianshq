@@ -30,7 +30,7 @@ So "funding the vault" means: send bitcoin to an address that belongs to the see
 **Bob (the heir) recovers**
 
 10. Bob boots Tails offline, gathers 3 of the 5 shares and the passphrase, and runs vault.js `node vault.js reconstruct --show share1 share2 share3`. It gives back the 24 words.
-11. Bob imports the 24 words into Sparrow on Tails, connects to the internet, and sends the coins to his own wallet.
+11. Bob restores the 24 words into a new hardware wallet (bought direct from the maker) and sends the coins to his own wallet from there. Never connect a machine that has the words on it.
 12. Bob then treats the old seed as used and never relies on it again.
 
 ## Safety checklist
