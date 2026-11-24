@@ -57,6 +57,7 @@ Usage:
   node vault.js sign     --psbt FILE [--network signet|testnet]
   node vault.js sign     --psbt FILE [--network signet|testnet] FILE FILE [...]
   node vault.js address  FILE FILE [...]
+  node vault.js descriptor [--network signet|testnet] FILE FILE [...]
   node vault.js --help
 
 Schemes:
@@ -342,7 +343,7 @@ async function reconstruct(opts) {
     }
   });
   key.fill(0);
-    if (opts.cmd === 'sign' || opts.cmd === 'address') {
+    if (opts.cmd === 'sign' || opts.cmd === 'address' || opts.cmd === 'descriptor') {
     const m = secrets.hex2str(secrets.combine(plain));
     if (!bip39.validateMnemonic(m)) die('Combined result is not a valid BIP39 mnemonic');
     return m;
@@ -507,6 +508,11 @@ async function main() {
     if (opts.files.length === 0) die('address needs share files');
     const { showAddress } = require('./psbt-sign');
     showAddress(await reconstruct(opts));
+  } else if (opts.cmd === 'descriptor') {
+    if (opts.files.length === 0) die('descriptor needs share files');
+    if (opts.network === 'mainnet' || opts.network === 'bitcoin') die('Refusing: mainnet is not allowed in this test build.');
+    const { showDescriptor } = require('./psbt-sign');
+    showDescriptor(await reconstruct(opts), opts.network);
  } else {
     die('Unknown command: ' + opts.cmd);
   }
