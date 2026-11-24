@@ -110,4 +110,34 @@ function showAddress(mnemonic) {
   console.log("Receive address (m/84'/1'/0'/0/0, signet/testnet):");
   console.log(pay.address);
 }
-  module.exports = { signReadOnly, signWithMnemonic, showAddress };
+function showDescriptor(mnemonic, netName = 'signet') {
+  if (netName === 'mainnet' || netName === 'bitcoin') {
+    throw new Error('Refusing: mainnet is not allowed in this test build.');
+  }
+  if (netName !== 'signet' && netName !== 'testnet') {
+    throw new Error('Unknown network: ' + netName + ' (use signet or testnet)');
+  }
+  const bip39 = require('bip39');
+  const { BIP32Factory } = require('bip32');
+  const network = bitcoin.networks.testnet;
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const root = BIP32Factory(ecc).fromSeed(seed, network);
+  seed.fill(0);
+  const fp = Buffer.from(root.fingerprint).toString('hex');
+  const acct = root.derivePath("m/84'/1'/0'");
+  const tpub = acct.neutered().toBase58();
+  const first = acct.derive(0).derive(0);
+  const pay = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(first.publicKey), network });
+  console.log(`Watch-only descriptor (${netName}, public only - NO private keys):`);
+  console.log(`wpkh([${fp}/84h/1h/0h]${tpub}/<0;1>/*)`);
+  console.log('');
+  console.log('Bitcoin Core before 28.0 - import these two separately:');
+  console.log('Receive (internal: false):');
+  console.log(`wpkh([${fp}/84h/1h/0h]${tpub}/0/*)`);
+  console.log('Change (internal: true):');
+  console.log(`wpkh([${fp}/84h/1h/0h]${tpub}/1/*)`);
+  console.log("First receive address (m/84'/1'/0'/0/0):");
+  console.log(pay.address);
+}
+
+module.exports = { signReadOnly, signWithMnemonic, showAddress, showDescriptor };
