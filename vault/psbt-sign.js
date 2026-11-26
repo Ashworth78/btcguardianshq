@@ -73,6 +73,24 @@ function findKey(root, script, network) {
   }
   return null;
 }
+// Fallback for P2WSH miniscript inputs: match via witnessScript and bip32Derivation.
+function findWshKey(root, inp, script, network) {
+  if (!inp.witnessScript || !inp.bip32Derivation || inp.bip32Derivation.length === 0) return null;
+  const pay = bitcoin.payments.p2wsh({ redeem: { output: Buffer.from(inp.witnessScript), network }, network });
+  if (!Buffer.from(pay.output).equals(Buffer.from(script))) return null;
+  const fp = Buffer.from(root.fingerprint);
+  const chunks = bitcoin.script.decompile(Buffer.from(inp.witnessScript));
+  for (const d of inp.bip32Derivation) {
+    if (!Buffer.from(d.masterFingerprint).equals(fp)) continue;
+    if (!/^m\/84'\/1'\/0'\/[01]\/\d+$/.test(d.path)) throw new Error(`Refusing key path outside m/84'/1'/0'/: ${d.path}`);
+    const child = root.derivePath(d.path);
+    const pub = Buffer.from(child.publicKey);
+    if (!pub.equals(Buffer.from(d.pubkey))) throw new Error(`BIP32 derivation pubkey mismatch at ${d.path}`);
+    const h160 = bitcoin.crypto.hash160(pub);
+    if (chunks && chunks.some((c) => c instanceof Uint8Array && (Buffer.from(c).equals(pub) || Buffer.from(c).equals(h160)))) return child;
+  }
+  return null;
+}
 
 function signWithMnemonic(psbtFile, netName, mnemonic, outFile) {
   const bip39 = require('bip39');
@@ -86,7 +104,7 @@ function signWithMnemonic(psbtFile, netName, mnemonic, outFile) {
     const txin = psbt.txInputs[i];
     const utxo = inp.witnessUtxo ||
       (inp.nonWitnessUtxo && bitcoin.Transaction.fromBuffer(inp.nonWitnessUtxo).outs[txin.index]);
-    const key = findKey(root, utxo.script, network);
+    const key = findKey(root, utxo.script, network) || findWshKey(root, inp, utxo.script, network);
     if (!key) { console.log(`  #${i} not ours, skipped`); return; }
     psbt.signInput(i, key);
     if (!psbt.validateSignaturesOfInput(i, (pub, hash, sig) => ecc.verify(hash, pub, sig))) {
