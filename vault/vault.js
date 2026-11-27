@@ -343,7 +343,7 @@ async function reconstruct(opts) {
     }
   });
   key.fill(0);
-    if (opts.cmd === 'sign' || opts.cmd === 'address' || opts.cmd === 'descriptor') {
+    if (opts.cmd === 'sign' || opts.cmd === 'address' || opts.cmd === 'descriptor' || opts.cmd === 'xpub') {
     const m = secrets.hex2str(secrets.combine(plain));
     if (!bip39.validateMnemonic(m)) die('Combined result is not a valid BIP39 mnemonic');
     return m;

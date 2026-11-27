@@ -144,6 +144,7 @@ function showDescriptor(mnemonic, netName = 'signet') {
   const fp = Buffer.from(root.fingerprint).toString('hex');
   const acct = root.derivePath("m/84'/1'/0'");
   const tpub = acct.neutered().toBase58();
+  seed.fill(0);
   const first = acct.derive(0).derive(0);
   const pay = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(first.publicKey), network });
   console.log(`Watch-only descriptor (${netName}, public only - NO private keys):`);
@@ -170,10 +171,10 @@ function showXpub(mnemonic, netName = 'signet') {
   const network = bitcoin.networks.testnet;
   const seed = bip39.mnemonicToSeedSync(mnemonic);
   const root = BIP32Factory(ecc).fromSeed(seed, network);
-  seed.fill(0);
   const fp = Buffer.from(root.fingerprint).toString('hex');
   const acct = root.derivePath("m/48'/1'/0'/2'");
   const tpub = acct.neutered().toBase58();
+  seed.fill(0);
   console.log(`Multisig key (BIP48 m/48'/1'/0'/2', ${netName}, public only - NO private keys):`);
   console.log(`[${fp}/48h/1h/0h/2h]${tpub}`);
 }
