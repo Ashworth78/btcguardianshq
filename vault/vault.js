@@ -513,6 +513,11 @@ async function main() {
     if (opts.network === 'mainnet' || opts.network === 'bitcoin') die('Refusing: mainnet is not allowed in this test build.');
     const { showDescriptor } = require('./psbt-sign');
     showDescriptor(await reconstruct(opts), opts.network);
+  } else if (opts.cmd === 'xpub') {
+    if (opts.files.length === 0) die('xpub needs share files');
+    if (opts.network === 'mainnet' || opts.network === 'bitcoin') die('Refusing: mainnet is not allowed in this test build.');
+    const { showXpub } = require('./psbt-sign');
+    showXpub(await reconstruct(opts), opts.network);
  } else {
     die('Unknown command: ' + opts.cmd);
   }

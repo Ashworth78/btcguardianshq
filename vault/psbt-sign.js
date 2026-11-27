@@ -82,8 +82,8 @@ function findWshKey(root, inp, script, network) {
   const chunks = bitcoin.script.decompile(Buffer.from(inp.witnessScript));
   for (const d of inp.bip32Derivation) {
     if (!Buffer.from(d.masterFingerprint).equals(fp)) continue;
-    if (!/^m\/84'\/1'\/0'\/[01]\/\d+$/.test(d.path)) throw new Error(`Refusing key path outside m/84'/1'/0'/: ${d.path}`);
-    const child = root.derivePath(d.path);
+    if (!/^m\/(84'\/1'\/0'|48'\/1'\/0'\/2')\/[01]\/\d+$/.test(d.path)) throw new Error(`Refusing key path outside m/84'/1'/0'/ or m/48'/1'/0'/2'/: ${d.path}`);    
+    const child = root.derivePath(d.path);
     const pub = Buffer.from(child.publicKey);
     if (!pub.equals(Buffer.from(d.pubkey))) throw new Error(`BIP32 derivation pubkey mismatch at ${d.path}`);
     const h160 = bitcoin.crypto.hash160(pub);
@@ -158,4 +158,24 @@ function showDescriptor(mnemonic, netName = 'signet') {
   console.log(pay.address);
 }
 
-module.exports = { signReadOnly, signWithMnemonic, showAddress, showDescriptor };
+function showXpub(mnemonic, netName = 'signet') {
+  if (netName === 'mainnet' || netName === 'bitcoin') {
+    throw new Error('Refusing: mainnet is not allowed in this test build.');
+  }
+  if (netName !== 'signet' && netName !== 'testnet') {
+    throw new Error('Unknown network: ' + netName + ' (use signet or testnet)');
+  }
+  const bip39 = require('bip39');
+  const { BIP32Factory } = require('bip32');
+  const network = bitcoin.networks.testnet;
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const root = BIP32Factory(ecc).fromSeed(seed, network);
+  seed.fill(0);
+  const fp = Buffer.from(root.fingerprint).toString('hex');
+  const acct = root.derivePath("m/48'/1'/0'/2'");
+  const tpub = acct.neutered().toBase58();
+  console.log(`Multisig key (BIP48 m/48'/1'/0'/2', ${netName}, public only - NO private keys):`);
+  console.log(`[${fp}/48h/1h/0h/2h]${tpub}`);
+}
+
+module.exports = { signReadOnly, signWithMnemonic, showAddress, showDescriptor, showXpub };

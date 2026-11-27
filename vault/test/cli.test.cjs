@@ -516,3 +516,14 @@ test('offline vault CLI regression suite', { concurrency: false }, async t => {
     assert.deepEqual(fs.readdirSync(out), []);
   });
 });
+test('xpub refuses mainnet before reading any file', () => {
+  const r = spawnSync(process.execPath, [CLI, 'xpub', '--network', 'mainnet', 'dummy.json'], { encoding: 'utf8', timeout: 15000 });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /mainnet is not allowed/);
+});
+
+test('xpub needs share files', () => {
+  const r = spawnSync(process.execPath, [CLI, 'xpub', '--network', 'signet'], { encoding: 'utf8', timeout: 15000 });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /xpub needs share files/);
+});
